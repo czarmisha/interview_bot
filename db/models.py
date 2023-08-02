@@ -20,7 +20,7 @@ dotenv_path = os.path.join(_BASE_DIR, '.env')
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path)
 
-_db_filename = os.environ['DB_FILENAME']
+_db_filename = 'bot_db'
 db_path = os.path.join(_BASE_DIR, _db_filename)
 engine = create_engine(f'sqlite:///{db_path}.db', echo=True)
 channel_id = os.environ['CHANNEL_ID']
