@@ -23,8 +23,8 @@ if os.path.exists(dotenv_path):
 _db_filename = os.environ['DB_FILENAME']
 db_path = os.path.join(_BASE_DIR, _db_filename)
 engine = create_engine(f'sqlite:///{db_path}.db', echo=True)
-default_manager_tashkent = os.environ['DEFAULT_MANAGER_KYIV']
-default_manager_kyiv = os.environ['DEFAULT_MANAGER_TASHKENT']
+channel_id = os.environ['CHANNEL_ID']
+admin_ids = os.environ['ADMIN_IDS']
 
 Base = declarative_base()
 Session = sessionmaker()
@@ -39,6 +39,9 @@ class Application(Base):
     candidate_id = Column(Integer, ForeignKey("candidate.id"))
 
     candidate = relationship("Candidate", back_populates="application")
+
+    def __repr__(self):
+        return f'<Application - {self.candidate_id}'
     
 
 class Company(Base):
@@ -73,14 +76,11 @@ class Candidate(Base):
     family_status = Column(String(50), nullable=False)
     company_knowledge = Column(Boolean, nullable=False)
     company_knowledge_text = Column(Text, nullable=True)
-    # application
 
-    tashkent_topics = relationship("Topic", back_populates="tashkent_user", foreign_keys="Topic.tashkent_user_id")
-    kyiv_topics = relationship("Topic", back_populates="kyiv_user", foreign_keys="Topic.kyiv_user_id")
-    question = relationship("Question", back_populates="author")
+    application = relationship("Application", back_populates="candidate")
 
     def __repr__(self):
-        return f'<User - {self.name}, id: {self.id}>'
+        return f'<Candidate - {self.full_name}, {self.phone}>'
     
 # def save_resume(user_id, filename, file_path):
 #     with open(file_path, 'rb') as file:
