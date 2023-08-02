@@ -32,7 +32,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, ABOUT, FINAL, REASON = range(12)
-CONVERSATION_TIMEOUT = 900
 # TODO: do logging
 # TODO: do statistic for admin only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -333,8 +332,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def timeout(update, context):
    await update.message.reply_text('Вы бездействовали больше 15 минут. Сеанс регистрации отменен.\n\nМожете начать регистрацию заново командой /start')
+   return ConversationHandler.END
 
-AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, ABOUT = range(10)
 start_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -369,8 +368,8 @@ start_handler = ConversationHandler(
                 CallbackQueryHandler(query_cancel, pattern='^cancel$'),
             ],
             REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, reason)],
-            ConversationHandler.TIMEOUT: [MessageHandler(filters.TEXT | filters.COMMAND, timeout)],
+            ConversationHandler.TIMEOUT: [MessageHandler(filters.ALL, timeout)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        conversation_timeout=CONVERSATION_TIMEOUT
+        conversation_timeout=datetime.timedelta(seconds=900)
     )
