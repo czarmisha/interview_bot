@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     Date,
+    DateTime,
     Boolean,
     ForeignKey,
     BigInteger,
@@ -34,7 +35,7 @@ class Application(Base):
     __tablename__ = 'application'
 
     id = Column(Integer, primary_key=True)
-    created = Column(Date, nullable=True)
+    created = Column(DateTime, nullable=True)
     completed = Column(Boolean, nullable=True)
     candidate_id = Column(Integer, ForeignKey("candidate.id"))
 
@@ -62,7 +63,7 @@ class Candidate(Base):
     full_name = Column(String(50), nullable=True)
     birth_date = Column(Date, nullable=True)
     city = Column(String(30), nullable=True)
-    created = Column(Date, nullable=True)
+    created = Column(DateTime, nullable=True)
     education = Column(Text, nullable=True)
     source = Column(String(80), nullable=True)
     trading_knowledge = Column(Boolean, nullable=True)

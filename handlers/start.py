@@ -1,4 +1,4 @@
-import logging, datetime
+import logging, datetime, re
 from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes,
@@ -35,13 +35,12 @@ AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, ABOUT,
 CONVERSATION_TIMEOUT = 900
 # TODO: do logging
 # TODO: do statistic for admin only
-# TODO: add created field
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        candidate = Candidate(tg_id =user.id, chat_id=update.effective_chat.id)
+        candidate = Candidate(tg_id =user.id, chat_id=update.effective_chat.id, created=datetime.datetime.now())
         session.add(candidate)
         session.commit()
     
@@ -49,6 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     application = session.execute(stmt).scalars().first()
     if application and application.completed:
         await update.message.reply_text("Вы уже подали заявку, ожидайте ответа! Мы свяжемся с Вами в течении 3х дней по телефону.")
+        return ConversationHandler.END
 
     keyboard = agreement_keyboard()
     await update.message.reply_text("Регистрируясь, я даю своё согласие на обработку персональных данных", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -105,7 +105,11 @@ async def phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     phone_num = update.message.text
-    # TODO: validate phone_num
+    pattern = r"^(\+998)[ .,-]?[0-9]{2}[ .,-]?[0-9]{3}[ .,-]?[0-9]{2}[ .,-]?[0-9]{2}$"
+    if not re.match(pattern, phone_num):
+        await update.message.reply_text("Укажите свой телефон именно в таком формате +998xxxxxxx")
+        return PHONE
+
     candidate.phone = phone_num
     session.add(candidate)
     session.commit()
@@ -189,7 +193,6 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not candidate:
         await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
         return ConversationHandler.END
-    # TODO: check another mime types
     if update.message.document:
         document = update.message.document
         file = await context.bot.get_file(document)
@@ -271,10 +274,12 @@ async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         stmt = select(Application).where(Application.candidate_id==candidate.id)
         application = session.execute(stmt).scalars().first()
-        if application and application.completed:
-            await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
-            return ConversationHandler.END
-        application = Application(completed=True, candidate_id=candidate.id) # TODO: created
+        if application:
+            if application.completed:
+                await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
+                return ConversationHandler.END
+        else:
+            application = Application(completed=True, candidate_id=candidate.id, created=datetime.datetime.now())
         session.add(application)
         session.commit()
 
@@ -282,7 +287,7 @@ async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text:
             try:
                 if candidate.resume_filepath:
-                    f=open(candidate.resume_filepath,'rb')
+                    f = open(candidate.resume_filepath, 'rb')
                     await context.bot.send_document(chat_id=channel_id, document=f, caption=text)
                     f.close
                 else:
