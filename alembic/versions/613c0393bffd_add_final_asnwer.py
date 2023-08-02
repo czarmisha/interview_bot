@@ -1,8 +1,8 @@
-"""initial
+"""add final_asnwer
 
-Revision ID: f11ec0ba9f52
+Revision ID: 613c0393bffd
 Revises: 
-Create Date: 2023-08-02 15:50:34.745589
+Create Date: 2023-08-02 17:56:55.288170
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f11ec0ba9f52'
+revision = '613c0393bffd'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -40,6 +40,7 @@ def upgrade() -> None:
     sa.Column('family_status', sa.String(length=50), nullable=True),
     sa.Column('company_knowledge', sa.Boolean(), nullable=True),
     sa.Column('company_knowledge_text', sa.Text(), nullable=True),
+    sa.Column('final_answer', sa.Boolean(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('company',

@@ -69,7 +69,7 @@ async def agreement(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.commit()
     
     await query.edit_message_text(text="Здравствуйте! Регистрация займет у вас не больше 5 минут.\n\n Укажите как Вас зовут (ФИО)")
-    return ConversationHandler.FIO
+    return FIO
 
 async def fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -113,8 +113,12 @@ async def birth(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     date = update.message.text
-    # TODO: validate date
-    candidate.birth_date = date.strptime(date, "%d.%m.%Y")
+    try:
+        birth_date = datetime.datetime.strptime(date, "%d.%m.%Y")
+        candidate.birth_date = birth_date
+    except ValueError:
+        await update.message.reply_text("Укажите дату рождения именно в таком формате: дд.мм.гггг")
+        return BIRTH
     session.add(candidate)
     session.commit()
 
@@ -166,7 +170,7 @@ async def family(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите откуда вы узнали о нас (инстаграм, от друга, канал вашего вуза и тд.)")
+    await update.message.reply_text("Отправьте нам свой резюме файлом (excel/word/txt формат) или напишите о себе подробнее")
     return RESUME
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,10 +181,19 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
         return ConversationHandler.END
     
-    # family_status = update.message.text
-    # candidate.family_status = family_status
-    # session.add(candidate)
-    # session.commit()
+    if update.message.document:
+        document = update.message.document
+        file = await context.bot.get_file(document)
+        file_path = f'resumes/{candidate.id}.{document.file_name.split(".")[-1]}'
+        await file.download_to_drive(file_path)
+        candidate.resume_filepath = file_path
+        candidate.resume_text = None
+    else:
+        resume_text = update.message.text
+        candidate.resume_filepath = None
+        candidate.resume_text = resume_text
+    session.add(candidate)
+    session.commit()
 
     await update.message.reply_text("Укажите откуда вы узнали о нас (инстаграм, от друга, канал вашего вуза и тд.)")
     return SOURCE
@@ -224,7 +237,48 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = final_keyboard()
     await update.message.reply_text("На этом все! Что выберите?", reply_markup=InlineKeyboardMarkup(keyboard))
     return FINAL
-# TODO: final and reason
+
+async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    query.answer()
+    answer = query.data.split('_')[1]
+    user = update.effective_user
+    stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
+    candidate = session.execute(stmt).scalars().first()
+    if not candidate:
+        await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
+        return ConversationHandler.END
+
+    if answer == '0':
+        candidate.final_answer = False
+        session.add(candidate)
+        session.commit()
+        await query.edit_message_text(text="В целях оптимизации рекрутинга, пожалуйста, укажите причину.")
+        return REASON
+    else:
+        candidate.final_answer = True
+        # TODO: application
+        session.add(candidate)
+        session.commit()
+        await query.edit_message_text(text="Спасибо за потраченное время. В ближайшие 3 дня мы свяжемся с Вами по телефону. Хорошего дня!")
+        return ConversationHandler.END
+    
+async def reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
+    candidate = session.execute(stmt).scalars().first()
+    if not candidate:
+        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        return ConversationHandler.END
+    
+    rejection_reason = update.message.text
+    candidate.rejection_reason = rejection_reason
+    session.add(candidate)
+    session.commit()
+
+    await update.message.reply_text("Спасибо за потраченное время. Хорошего дня!")
+    return ConversationHandler.END
+
 async def query_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     query.answer()
@@ -273,10 +327,12 @@ start_handler = ConversationHandler(
                 & ~filters.COMMAND, resume)
             ],
             SOURCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, source)],
-            ABOUT: [
-                CallbackQueryHandler(about, pattern='^about_'),
+            ABOUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, about)],
+            FINAL: [
+                CallbackQueryHandler(final, pattern='^final_'),
                 CallbackQueryHandler(query_cancel, pattern='^cancel$'),
             ],
+            REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, reason)],
             ConversationHandler.TIMEOUT: [MessageHandler(filters.TEXT | filters.COMMAND, timeout)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],

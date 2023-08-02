@@ -70,12 +70,14 @@ class Candidate(Base):
     english_level = Column(String(100), nullable=True)
     what_attracted = Column(String(100), nullable=True)
     agreement = Column(Boolean, nullable=True)
-    resume_data = Column(LargeBinary, nullable=True)
-    resume_filename = Column(String(100), nullable=True)
+    # resume_data = Column(LargeBinary, nullable=True)
+    resume_filepath = Column(String(100), nullable=True)
     resume_text = Column(Text, nullable=True)
     family_status = Column(String(50), nullable=True)
     company_knowledge = Column(Boolean, nullable=True)  # TODO: delete?
     company_knowledge_text = Column(Text, nullable=True)
+    final_answer = Column(Boolean, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
 
     application = relationship("Application", back_populates="candidate")
 
