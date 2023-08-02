@@ -1,5 +1,5 @@
 import logging, datetime
-from telegram import Update, ForceReply, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes,
     MessageHandler,
@@ -15,12 +15,15 @@ from db.models import (
     engine,
     Candidate,
     Company,
-    Application
+    Application,
+    channel_id,
+    admin_ids
 )
 from utils.keyboards import (
     agreement_keyboard,
     final_keyboard,
 )
+from utils.build_text import build_text
 
 session = Session(bind=engine)
 logging.basicConfig(
@@ -31,7 +34,8 @@ logger = logging.getLogger(__name__)
 AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, ABOUT, FINAL, REASON = range(12)
 CONVERSATION_TIMEOUT = 900
 # TODO: do logging
-# TODO: if candidate application is completed - bye bye
+# TODO: do statistic for admin only
+# TODO: add created field
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
@@ -273,6 +277,19 @@ async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
         application.completed = True
         session.add(application)
         session.commit()
+
+        text = build_text(candidate.id)
+        if text:
+            try:
+                if candidate.resume_filepath:
+                    f=open(candidate.resume_filepath,'rb')
+                    await context.bot.send_document(chat_id=channel_id, document=f, caption=text)
+                    f.close
+                else:
+                    text += f'- Резюме: {candidate.resume_text if candidate.resume_text else ""}\n'
+                    await context.bot.send_message(chat_id=channel_id, text=text) 
+            except Exception as e:
+                logger.error('can not send message to channel', e)
 
         await query.edit_message_text(text="Спасибо за потраченное время. В ближайшие 3 дня мы свяжемся с Вами по телефону. Хорошего дня!")
         return ConversationHandler.END

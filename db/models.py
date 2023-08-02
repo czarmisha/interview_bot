@@ -11,7 +11,7 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     BigInteger,
-    LargeBinary,
+    # LargeBinary,
     Text,
 )
 
