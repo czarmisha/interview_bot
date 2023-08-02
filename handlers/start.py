@@ -189,7 +189,7 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not candidate:
         await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
         return ConversationHandler.END
-    
+    # TODO: check another mime types
     if update.message.document:
         document = update.message.document
         file = await context.bot.get_file(document)
@@ -271,10 +271,10 @@ async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         stmt = select(Application).where(Application.candidate_id==candidate.id)
         application = session.execute(stmt).scalars().first()
-        if application.completed:
+        if application and application.completed:
             await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
             return ConversationHandler.END
-        application.completed = True
+        application = Application(completed=True, candidate_id=candidate.id) # TODO: created
         session.add(application)
         session.commit()
 
