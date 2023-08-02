@@ -74,7 +74,7 @@ class Candidate(Base):
     resume_filename = Column(String(100), nullable=True)
     resume_text = Column(Text, nullable=True)
     family_status = Column(String(50), nullable=True)
-    company_knowledge = Column(Boolean, nullable=True)
+    company_knowledge = Column(Boolean, nullable=True)  # TODO: delete?
     company_knowledge_text = Column(Text, nullable=True)
 
     application = relationship("Application", back_populates="candidate")
