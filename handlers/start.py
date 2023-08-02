@@ -40,6 +40,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         candidate = Candidate(tg_id =user.id, chat_id=update.effective_chat.id)
         session.add(candidate)
         session.commit()
+    
+    stmt = select(Application).where(Application.candidate_id==candidate.id)
+    application = session.execute(stmt).scalars().first()
+    if application and application.completed:
+        await update.message.reply_text("Вы уже подали заявку, ожидайте ответа! Мы свяжемся с Вами в течении 3х дней по телефону.")
 
     keyboard = agreement_keyboard()
     await update.message.reply_text("Регистрируясь, я даю своё согласие на обработку персональных данных", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -257,9 +262,18 @@ async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return REASON
     else:
         candidate.final_answer = True
-        # TODO: application
         session.add(candidate)
         session.commit()
+
+        stmt = select(Application).where(Application.candidate_id==candidate.id)
+        application = session.execute(stmt).scalars().first()
+        if application.completed:
+            await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
+            return ConversationHandler.END
+        application.completed = True
+        session.add(application)
+        session.commit()
+
         await query.edit_message_text(text="Спасибо за потраченное время. В ближайшие 3 дня мы свяжемся с Вами по телефону. Хорошего дня!")
         return ConversationHandler.END
     
