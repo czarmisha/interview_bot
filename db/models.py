@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     BigInteger,
     LargeBinary,
+    Text,
 )
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -43,6 +44,8 @@ class Application(Base):
 class Company(Base):
     __tablename__ = 'company'
 
+    description = Column(Text, nullable=False)
+
     id = Column(Integer, primary_key=True)
 
    
@@ -57,15 +60,19 @@ class Candidate(Base):
     birth_date = Column(Date, nullable=False)
     city = Column(String(30), nullable=True)
     created = Column(Date, nullable=False)
-    education = Column(String(150), nullable=False)
+    education = Column(Text, nullable=False)
     source = Column(String(80), nullable=False)
     trading_knowledge = Column(Boolean, nullable=False)
-    experience = Column(String(200), nullable=True)
+    experience = Column(Text, nullable=True)
     english_level = Column(String(100), nullable=False)
     what_attracted = Column(String(100), nullable=False)
     consent = Column(Boolean, nullable=False)  # что если не дал согласие?
     resume_data = Column(LargeBinary, nullable=True)
     resume_filename = Column(String(100), nullable=True)
+    resume_text = Column(Text, nullable=True)
+    family_status = Column(String(50), nullable=False)
+    company_knowledge = Column(Boolean, nullable=False)
+    company_knowledge_text = Column(Text, nullable=True)
     # application
 
     tashkent_topics = relationship("Topic", back_populates="tashkent_user", foreign_keys="Topic.tashkent_user_id")
