@@ -34,8 +34,8 @@ class Application(Base):
     __tablename__ = 'application'
 
     id = Column(Integer, primary_key=True)
-    created = Column(Date, nullable=False)
-    completed = Column(Boolean, nullable=False)
+    created = Column(Date, nullable=True)
+    completed = Column(Boolean, nullable=True)
     candidate_id = Column(Integer, ForeignKey("candidate.id"))
 
     candidate = relationship("Candidate", back_populates="application")
@@ -47,7 +47,7 @@ class Application(Base):
 class Company(Base):
     __tablename__ = 'company'
 
-    description = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
 
     id = Column(Integer, primary_key=True)
 
@@ -56,25 +56,25 @@ class Candidate(Base):
     __tablename__ = 'candidate'
 
     id = Column(Integer, primary_key=True)
-    tg_id = Column(BigInteger, nullable=False)
+    tg_id = Column(BigInteger, nullable=True)
     chat_id = Column(BigInteger, nullable=True)
-    phone = Column(String(13), nullable=False)
-    full_name = Column(String(50), nullable=False)
-    birth_date = Column(Date, nullable=False)
+    phone = Column(String(13), nullable=True)
+    full_name = Column(String(50), nullable=True)
+    birth_date = Column(Date, nullable=True)
     city = Column(String(30), nullable=True)
-    created = Column(Date, nullable=False)
-    education = Column(Text, nullable=False)
-    source = Column(String(80), nullable=False)
-    trading_knowledge = Column(Boolean, nullable=False)
+    created = Column(Date, nullable=True)
+    education = Column(Text, nullable=True)
+    source = Column(String(80), nullable=True)
+    trading_knowledge = Column(Boolean, nullable=True)
     experience = Column(Text, nullable=True)
-    english_level = Column(String(100), nullable=False)
-    what_attracted = Column(String(100), nullable=False)
-    consent = Column(Boolean, nullable=False)  # что если не дал согласие?
+    english_level = Column(String(100), nullable=True)
+    what_attracted = Column(String(100), nullable=True)
+    agreement = Column(Boolean, nullable=True)
     resume_data = Column(LargeBinary, nullable=True)
     resume_filename = Column(String(100), nullable=True)
     resume_text = Column(Text, nullable=True)
-    family_status = Column(String(50), nullable=False)
-    company_knowledge = Column(Boolean, nullable=False)
+    family_status = Column(String(50), nullable=True)
+    company_knowledge = Column(Boolean, nullable=True)
     company_knowledge_text = Column(Text, nullable=True)
 
     application = relationship("Application", back_populates="candidate")
