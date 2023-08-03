@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 from sqlalchemy import select
-from db.models import (
+from database.models import (
     Session,
     engine,
     Candidate,
