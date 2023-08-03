@@ -21,7 +21,7 @@ def build_text(id):
         logger.error("error! no candidate in db. can not build text for channel")
         return ''
     
-    text = f'Новая заявка. №{id}\n\n'
+    text = ''
     text += f'- Согласие на обработку персональных данных: {"да" if candidate.agreement else "нет"}\n'
     text += f'- ФИО: {candidate.full_name if candidate.full_name else "-"}\n'
     text += f'- Телефон: {candidate.phone if candidate.phone else "-"}\n'
@@ -32,7 +32,6 @@ def build_text(id):
     text += f'- Семейное положение: {candidate.family_status if candidate.family_status else "-"}\n'
     text += f'- Знаком с компанией: {candidate.company_knowledge_text if candidate.company_knowledge_text else "-"}\n'
     # text += f'- Опыт: {candidate.experience if candidate.experience else "-"}\n'
-    # text += f'- Согласен попробовать: {"да" if candidate.final_answer else "нет"}\n'
     # text += f'- Причина отказа: {candidate.rejection_reason if candidate.rejection_reason else "-"}\n'
 
     return text

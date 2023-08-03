@@ -31,7 +31,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, ABOUT, FINAL, REASON = range(12)
+ABOUT, AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, FINAL, REASON = range(12)
 # TODO: do logging
 # TODO: do statistic for admin only
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -49,9 +49,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Вы уже подали заявку, ожидайте ответа! С вами должны связаться по телефону в течении 3х дней с момента подачи заявки.")
         return ConversationHandler.END  # TODO: если заявку уже подали но с ним не связались?? 
 
-    keyboard = agreement_keyboard()
-    await update.message.reply_text("Регистрируясь, я даю своё согласие на обработку персональных данных", reply_markup=InlineKeyboardMarkup(keyboard))
+    stmt = select(Company)
+    company = session.execute(stmt).scalars().first()
+    if not company:
+        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        return ConversationHandler.END
 
+    await update.message.reply_text(company.description)
+    keyboard = final_keyboard()
+    await update.message.reply_text("Что скажете?", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    return ABOUT
+
+async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    query.answer()
+    answer = query.data.split('_')[1]
+    user = update.effective_user
+    stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
+    candidate = session.execute(stmt).scalars().first()
+    if not candidate:
+        await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
+        return ConversationHandler.END
+
+    if answer == '0':
+        candidate.final_answer = False
+        session.add(candidate)
+        session.commit()
+        await query.edit_message_text(text="В целях оптимизации рекрутинга, пожалуйста, укажите причину.")
+        return REASON
+    else:
+        candidate.final_answer = True
+        session.add(candidate)
+        session.commit()
+    
+    keyboard = agreement_keyboard()
+    await query.edit_message_text(text="Регистрируясь, я даю своё согласие на обработку персональных данных", reply_markup=InlineKeyboardMarkup(keyboard))
     return AGREEMENT
 
 async def agreement(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -222,10 +255,10 @@ async def source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.add(candidate)
     session.commit()
     
-    await update.message.reply_text("Вы что-нибудь знаете о нашей компании? (слышали от друга, работали раньше и тд.)")
-    return ABOUT
+    await update.message.reply_text("Вы что-нибудь знаете о нашей компании? Если да, опишите пожалуйста (слышали от друга, работали раньше и тд.)")
+    return FINAL
 
-async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
@@ -238,65 +271,33 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.add(candidate)
     session.commit()
 
-    stmt = select(Company)
-    company = session.execute(stmt).scalars().first()
-    if not company:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
-        return ConversationHandler.END
-
-    await update.message.reply_text(company.description)
-    keyboard = final_keyboard()
-    await update.message.reply_text("На этом все! Что выберите?", reply_markup=InlineKeyboardMarkup(keyboard))
-    return FINAL
-
-async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    query.answer()
-    answer = query.data.split('_')[1]
-    user = update.effective_user
-    stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
-    candidate = session.execute(stmt).scalars().first()
-    if not candidate:
-        await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
-        return ConversationHandler.END
-
-    if answer == '0':
-        candidate.final_answer = False
-        session.add(candidate)
-        session.commit()
-        await query.edit_message_text(text="В целях оптимизации рекрутинга, пожалуйста, укажите причину.")
-        return REASON
+    stmt = select(Application).where(Application.candidate_id==candidate.id)
+    application = session.execute(stmt).scalars().first()
+    if application:
+        if application.completed:
+            await update.message.reply_text("Произошла ошибка, обратитесь к администратору")
+            return ConversationHandler.END
     else:
-        candidate.final_answer = True
-        session.add(candidate)
-        session.commit()
+        application = Application(completed=True, candidate_id=candidate.id, created=datetime.datetime.now())
+    session.add(application)
+    session.commit()
 
-        stmt = select(Application).where(Application.candidate_id==candidate.id)
-        application = session.execute(stmt).scalars().first()
-        if application:
-            if application.completed:
-                await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
-                return ConversationHandler.END
-        else:
-            application = Application(completed=True, candidate_id=candidate.id, created=datetime.datetime.now())
-        session.add(application)
-        session.commit()
+    text = build_text(candidate.id)
+    if text:
+        text = f'Новая заявка. №{application.id}\n\n' + text
+        try:
+            if candidate.resume_filepath:
+                f = open(candidate.resume_filepath, 'rb')
+                await context.bot.send_document(chat_id=channel_id, document=f, caption=text)
+                f.close
+            else:
+                text += f'- Резюме: {candidate.resume_text if candidate.resume_text else ""}\n'
+                await context.bot.send_message(chat_id=channel_id, text=text) 
+        except Exception as e:
+            logger.error('can not send message to channel', e)
 
-        text = build_text(candidate.id)
-        if text:
-            try:
-                if candidate.resume_filepath:
-                    f = open(candidate.resume_filepath, 'rb')
-                    await context.bot.send_document(chat_id=channel_id, document=f, caption=text)
-                    f.close
-                else:
-                    text += f'- Резюме: {candidate.resume_text if candidate.resume_text else ""}\n'
-                    await context.bot.send_message(chat_id=channel_id, text=text) 
-            except Exception as e:
-                logger.error('can not send message to channel', e)
-
-        await query.edit_message_text(text="Спасибо за потраченное время. В ближайшие 3 дня мы свяжемся с Вами по телефону. Хорошего дня!")
-        return ConversationHandler.END
+    await update.message.reply_text("Спасибо за потраченное время. В ближайшие 3 дня мы свяжемся с Вами по телефону. Хорошего дня!")
+    return ConversationHandler.END
     
 async def reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -362,9 +363,9 @@ start_handler = ConversationHandler(
                 & ~filters.COMMAND, resume)
             ],
             SOURCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, source)],
-            ABOUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, about)],
-            FINAL: [
-                CallbackQueryHandler(final, pattern='^final_'),
+            FINAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, final)],
+            ABOUT: [
+                CallbackQueryHandler(about, pattern='^final_'),
                 CallbackQueryHandler(query_cancel, pattern='^cancel$'),
             ],
             REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, reason)],
