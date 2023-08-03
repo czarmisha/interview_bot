@@ -46,8 +46,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stmt = select(Application).where(Application.candidate_id==candidate.id)
     application = session.execute(stmt).scalars().first()
     if application and application.completed:
-        await update.message.reply_text("Вы уже подали заявку, ожидайте ответа! Мы свяжемся с Вами в течении 3х дней по телефону.")
-        return ConversationHandler.END
+        await update.message.reply_text("Вы уже подали заявку, ожидайте ответа! С вами должны связаться по телефону в течении 3х дней с момента подачи заявки.")
+        return ConversationHandler.END  # TODO: если заявку уже подали но с ним не связались?? 
 
     keyboard = agreement_keyboard()
     await update.message.reply_text("Регистрируясь, я даю своё согласие на обработку персональных данных", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -182,7 +182,7 @@ async def family(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Отправьте нам свой резюме файлом (excel/word/txt формат) или напишите о себе подробнее")
+    await update.message.reply_text("Отправьте нам своё резюме файлом (excel/word/txt формат) или напишите о себе подробнее")
     return RESUME
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
