@@ -1,0 +1,13 @@
+[Unit]
+Description=interview_bot 
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/interview_bot/
+ExecStart=/usr/bin/python3 main.py
+StartLimitInterval=60
+StartLimitBurst=10
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

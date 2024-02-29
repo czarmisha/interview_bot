@@ -7,6 +7,7 @@ from telegram.ext import (
     ConversationHandler,
     CallbackQueryHandler,
     filters,
+    BaseHandler,
 )
 
 from sqlalchemy import select
@@ -17,13 +18,16 @@ from database.models import (
     Company,
     Application,
     channel_id,
-    admin_ids
 )
 from utils.keyboards import (
     agreement_keyboard,
     final_keyboard,
+    lang_keyboard,
 )
 from utils.build_text import build_text
+from text.start import text
+from text.company import company_description
+
 
 session = Session(bind=engine)
 logging.basicConfig(
@@ -31,200 +35,287 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ABOUT, AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, FINAL, REASON = range(12)
+LANGUAGE, ABOUT, AGREEMENT, FIO, PHONE, BIRTH, EDUCATION, ENGLISH, FAMILY, RESUME, SOURCE, FINAL, REASON = range(13)
+
+
 # TODO: do logging
 # TODO: do statistic for admin only
+# TODO: list application and candidates count for period
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        candidate = Candidate(tg_id =user.id, chat_id=update.effective_chat.id, created=datetime.datetime.now())
+        candidate = Candidate(
+            tg_id =user.id, chat_id=update.effective_chat.id,
+            created=datetime.datetime.now(), last_activity=datetime.datetime.now()
+        )
         session.add(candidate)
         session.commit()
+        context.chat_data['user_id'] = candidate.id
+        lang = 'ru'
+        keyboard = lang_keyboard()
+        await update.message.reply_text(text['select_lang'][lang], reply_markup=InlineKeyboardMarkup(keyboard))
+        return LANGUAGE
+    else:
+        candidate.last_activity = datetime.datetime.now()
+        session.add(candidate)
+        session.commit()
+        lang = candidate.language
+        context.chat_data['lang'] = lang
+        context.chat_data['user_id'] = candidate.id
+        stmt = select(Application).where(Application.candidate_id==candidate.id)
+        application = session.execute(stmt).scalars().first()
+        if application and application.completed:
+            await update.message.reply_text(text['application_already_completed'][lang])
+            return ConversationHandler.END  # TODO: если заявку уже подали но с ним не связались?? 
+
+        await update.message.reply_text(company_description[lang])
+        keyboard = final_keyboard(lang)
+        await update.message.reply_text(text['what_d_u_think'][lang], reply_markup=InlineKeyboardMarkup(keyboard))
+
+        return ABOUT
+
+
+async def language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    query.answer()
+    answer = query.data.split('_')[1]
+    user = update.effective_user
+    stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
+    candidate = session.execute(stmt).scalars().first()
+    if not candidate:
+        await update.message.reply_text(text=text['error'][answer])
+        return ConversationHandler.END
     
+    candidate.language = answer
+    context.chat_data['user_id'] = candidate.id
+
+    session.add(candidate)
+    session.commit()
+
     stmt = select(Application).where(Application.candidate_id==candidate.id)
     application = session.execute(stmt).scalars().first()
     if application and application.completed:
-        await update.message.reply_text("Вы уже подали заявку, ожидайте ответа! С вами должны связаться по телефону в течении 3х дней с момента подачи заявки.")
+        await update.message.reply_text(text['application_already_completed'][answer])
         return ConversationHandler.END  # TODO: если заявку уже подали но с ним не связались?? 
 
-    stmt = select(Company)
-    company = session.execute(stmt).scalars().first()
-    if not company:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
-        return ConversationHandler.END
-
-    await update.message.reply_text(company.description)
-    keyboard = final_keyboard()
-    await update.message.reply_text("Что скажете?", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text=company_description[answer])
+    keyboard = final_keyboard(answer)
+    await query.edit_message_text(text=text['what_d_u_think'][answer], reply_markup=InlineKeyboardMarkup(keyboard))
 
     return ABOUT
+
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     query.answer()
     answer = query.data.split('_')[1]
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
 
     if answer == '0':
         candidate.final_answer = False
         session.add(candidate)
         session.commit()
-        await query.edit_message_text(text="В целях оптимизации рекрутинга, пожалуйста, укажите причину.")
+        await query.edit_message_text(text=text['reason'][lang])
         return REASON
     else:
         candidate.final_answer = True
         session.add(candidate)
         session.commit()
     
-    keyboard = agreement_keyboard()
-    await query.edit_message_text(text="Регистрируясь, я даю своё согласие на обработку персональных данных", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = agreement_keyboard(lang)
+    await query.edit_message_text(text=text['agreement'][lang], reply_markup=InlineKeyboardMarkup(keyboard))
     return AGREEMENT
+
 
 async def agreement(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     query.answer()
     answer = query.data.split('_')[1]
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await query.edit_message_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
 
     if answer == '0':
         candidate.agreement = False
         session.add(candidate)
         session.commit()
-        await query.edit_message_text(text="Спасибо за потраченное время.\n\nНачать регистрацию заново - /start")
+        await query.edit_message_text(text=text['false_agreement'][lang])
         return ConversationHandler.END
     else:
         candidate.agreement = True
         session.add(candidate)
         session.commit()
     
-    await query.edit_message_text(text="Здравствуйте! Регистрация займет у вас не больше 5 минут.\n\n Укажите как Вас зовут (ФИО)")
+    await query.edit_message_text(text=text['fio'][lang])
     return FIO
+
 
 async def fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     full_name = update.message.text
     candidate.full_name = full_name
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите свой телефон в формате +998xxxxxxx")
+    await update.message.reply_text(text['phone'][lang])
     return PHONE
+
 
 async def phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     phone_num = update.message.text
     pattern = r"^(\+998)[ .,-]?[0-9]{2}[ .,-]?[0-9]{3}[ .,-]?[0-9]{2}[ .,-]?[0-9]{2}$"
     if not re.match(pattern, phone_num):
-        await update.message.reply_text("Укажите свой телефон именно в таком формате +998xxxxxxx")
+        await update.message.reply_text(text['phone_format'][lang])
         return PHONE
 
     candidate.phone = phone_num
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите дату рождения в формате дд.мм.гггг")
+    await update.message.reply_text(text['birth'][lang])
     return BIRTH
+
 
 async def birth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     date = update.message.text
     try:
         birth_date = datetime.datetime.strptime(date, "%d.%m.%Y")
         candidate.birth_date = birth_date
     except ValueError:
-        await update.message.reply_text("Укажите дату рождения именно в таком формате: дд.мм.гггг")
+        await update.message.reply_text(text['birth_format'][lang])
         return BIRTH
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите ВУЗ в котором обучаетесь/лись с указание направления(факультета)")
+    await update.message.reply_text(text['study'][lang])
     return EDUCATION
+
 
 async def education(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     education_mess = update.message.text
     candidate.education = education_mess
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите свой уровень английского")
+    await update.message.reply_text(text['lang_lvl'][lang])
     return ENGLISH
+
 
 async def english(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     language = update.message.text
     candidate.english_level = language
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите свое семейное положение")
+    await update.message.reply_text(text['family'][lang])
     return FAMILY
+
 
 async def family(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     family_status = update.message.text
     candidate.family_status = family_status
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Отправьте нам своё резюме файлом (excel/word/txt формат) или напишите о себе подробнее")
+    await update.message.reply_text(text['cv'][lang])
     return RESUME
+
 
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
+
     if update.message.document:
         document = update.message.document
         file = await context.bot.get_file(document)
@@ -239,32 +330,42 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Укажите откуда вы узнали о нас (инстаграм, от друга, канал вашего вуза и тд.)")
+    await update.message.reply_text(text['source'][lang])
     return SOURCE
+
 
 async def source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     source_mess = update.message.text
     candidate.source = source_mess
     session.add(candidate)
     session.commit()
     
-    await update.message.reply_text("Вы что-нибудь знаете о нашей компании? Если да, опишите пожалуйста (слышали от друга, работали раньше и тд.)")
+    await update.message.reply_text(text['about'][lang])
     return FINAL
+
 
 async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     company_knowledge = update.message.text
     candidate.company_knowledge_text = company_knowledge
@@ -275,65 +376,84 @@ async def final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     application = session.execute(stmt).scalars().first()
     if application:
         if application.completed:
-            await update.message.reply_text("Произошла ошибка, обратитесь к администратору")
+            await update.message.reply_text(text['error'][lang])
             return ConversationHandler.END
     else:
         application = Application(completed=True, candidate_id=candidate.id, created=datetime.datetime.now())
     session.add(application)
     session.commit()
 
-    text = build_text(candidate.id)
+    msg_text = build_text(candidate.id)
     if text:
-        text = f'Новая заявка. №{application.id}\n\n' + text
+        msg_text = f'Новая заявка. №{application.id}\n\n' + msg_text
         try:
             if candidate.resume_filepath:
                 f = open(candidate.resume_filepath, 'rb')
-                await context.bot.send_document(chat_id=channel_id, document=f, caption=text)
+                # await context.bot.send_document(chat_id=channel_id, document=f, caption=msg_text)
+                print('sended message to channel1')
                 f.close
             else:
-                text += f'- Резюме: {candidate.resume_text if candidate.resume_text else ""}\n'
-                await context.bot.send_message(chat_id=channel_id, text=text) 
+                msg_text += f'- Резюме: {candidate.resume_text if candidate.resume_text else ""}\n'
+                print('sended message to channel2')
+                # await context.bot.send_message(chat_id=channel_id, text=msg_text) 
         except Exception as e:
             logger.error('can not send message to channel', e)
 
-    await update.message.reply_text("Спасибо за потраченное время. В ближайшие 3 дня мы свяжемся с Вами по телефону. Хорошего дня!")
+    await update.message.reply_text(text['thanks'][lang])
     return ConversationHandler.END
-    
+
+ 
 async def reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    lang = context.chat_data.get('lang')
     stmt = select(Candidate).where(Candidate.tg_id==int(user.id))
     candidate = session.execute(stmt).scalars().first()
     if not candidate:
-        await update.message.reply_text(text="Произошла ошибка, обратитесь к администратору")
+        await update.message.reply_text(text=text['error'][lang or 'ru'])
         return ConversationHandler.END
+
+    lang = candidate.language
+    context.chat_data['lang'] = lang
     
     rejection_reason = update.message.text
     candidate.rejection_reason = rejection_reason
     session.add(candidate)
     session.commit()
 
-    await update.message.reply_text("Спасибо за потраченное время. Хорошего дня!")
+    await update.message.reply_text(text['thanks_2'][lang])
     return ConversationHandler.END
+
 
 async def query_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     query.answer()
+    lang = context.chat_data.get('lang')
     await query.edit_message_text(
-        text="Вы отменили регистрацию \nКоманда для регистрации - /start"
+        text=text['canceled'][lang or 'ru']
     )
 
     return ConversationHandler.END
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lang = context.chat_data.get('lang')
     await update.message.reply_text(
-        "Вы отменили регистрацию \nКоманда для регистрации - /start"
+        text['canceled'][lang or 'ru']
     )
 
     return ConversationHandler.END
 
+
 async def timeout(update, context):
-   await update.message.reply_text('Вы бездействовали больше 15 минут. Сеанс регистрации отменен.\n\nМожете начать регистрацию заново командой /start')
-   return ConversationHandler.END
+    lang = context.chat_data.get('lang')
+    msg_text = text['timeout'][lang or 'ru']
+    if update.message:
+        await update.message.reply_text(msg_text)
+    else:
+        await context.bot.send_message(chat_id=update.effective_user.id, text=msg_text)
+
+    return ConversationHandler.END
+
 
 start_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -368,8 +488,14 @@ start_handler = ConversationHandler(
                 CallbackQueryHandler(about, pattern='^final_'),
                 CallbackQueryHandler(query_cancel, pattern='^cancel$'),
             ],
+            LANGUAGE: [
+                CallbackQueryHandler(language, pattern='^lang_'),
+            ],
             REASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, reason)],
-            ConversationHandler.TIMEOUT: [MessageHandler(filters.ALL, timeout)],
+            ConversationHandler.TIMEOUT: [
+                MessageHandler(filters.ALL, timeout),
+                CallbackQueryHandler(timeout, pattern='.*'),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=datetime.timedelta(seconds=900)

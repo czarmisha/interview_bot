@@ -36,7 +36,8 @@ class Application(Base):
 
     id = Column(Integer, primary_key=True)
     created = Column(DateTime, nullable=True)
-    completed = Column(Boolean, nullable=True)
+    completed = Column(Boolean, nullable=True, default=False)
+    processed = Column(Boolean, nullable=True, default=False)
     candidate_id = Column(Integer, ForeignKey("candidate.id"))
 
     candidate = relationship("Candidate", back_populates="application")
@@ -58,12 +59,14 @@ class Candidate(Base):
 
     id = Column(Integer, primary_key=True)
     tg_id = Column(BigInteger, nullable=True)
+    language = Column(String(2), nullable=True, default='ru')
     chat_id = Column(BigInteger, nullable=True)
     phone = Column(String(13), nullable=True)
     full_name = Column(String(50), nullable=True)
     birth_date = Column(Date, nullable=True)
     city = Column(String(30), nullable=True)
     created = Column(DateTime, nullable=True)
+    last_activity = Column(DateTime, nullable=True)
     education = Column(Text, nullable=True)
     source = Column(String(80), nullable=True)
     trading_knowledge = Column(Boolean, nullable=True)
